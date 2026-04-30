@@ -8,6 +8,10 @@ dependencies = [
     "chromadb>=1.5.8",
     "langchain>=1.2.15",
     "langchain-community>=0.4.1",
+    "langchain-experimental>=0.4.1",
     "langchain-ollama>=1.1.0",
+    "langgraph-checkpoint-sqlite>=3.0.3",
+    "rank-bm25>=0.2.2",
     "streamlit>=1.57.0",
+    "transformers>=5.7.0",
 ]

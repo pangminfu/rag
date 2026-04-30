@@ -1,25 +1,57 @@
+import argparse
 import os
+import uuid
 
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent import TOP_K, build_agent, vectorstore
+from agent import DEFAULT_HYBRID, TOP_K, build_agent, build_retriever
+from chunking import CHUNKERS, RecursiveChunker
 
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--store",
+        choices=list(CHUNKERS),
+        default=RecursiveChunker.name,
+    )
+    parser.add_argument(
+        "--hybrid",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_HYBRID,
+    )
+    return parser.parse_args()
+
+
+args = parse_args()
 
 st.set_page_config(page_title="Acme Robotics Assistant", page_icon=None)
 st.title("Acme Robotics Assistant")
-st.caption(f"Local RAG agent. Ollama: {os.environ.get('OLLAMA_HOST', 'unset')}")
+st.caption(
+    f"Local RAG agent. Ollama: {os.environ.get('OLLAMA_HOST', 'unset')} • "
+    f"Store: {args.store} • Retrieval: {'hybrid' if args.hybrid else 'vector'}"
+)
 
 
 @st.cache_resource
-def get_agent():
-    return build_agent()
+def get_agent(store: str, hybrid: bool):
+    return build_agent(store=store, hybrid=hybrid)
+
+
+@st.cache_resource
+def get_retriever(store: str, hybrid: bool):
+    return build_retriever(store=store, hybrid=hybrid)
 
 
 if "history" not in st.session_state:
     st.session_state.history = []
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
 
-agent = get_agent()
+agent = get_agent(args.store, args.hybrid)
+retriever = get_retriever(args.store, args.hybrid)
+config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
 for turn in st.session_state.history:
     with st.chat_message(turn["role"]):
@@ -38,11 +70,10 @@ if question:
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            messages = [
-                {"role": m["role"], "content": m["content"]}
-                for m in st.session_state.history
-            ]
-            result = agent.invoke({"messages": messages})
+            result = agent.invoke(
+                {"messages": [{"role": "user", "content": question}]},
+                config=config,
+            )
 
         tool_queries = []
         for msg in result["messages"]:
@@ -53,7 +84,7 @@ if question:
 
         sources = []
         for q in tool_queries:
-            for chunk in vectorstore.similarity_search(q, k=TOP_K):
+            for chunk in retriever.invoke(q)[:TOP_K]:
                 sources.append(
                     {
                         "source": chunk.metadata.get("source", "?"),

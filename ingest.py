@@ -1,16 +1,34 @@
+import argparse
 import os
 
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from chunking import CHUNKERS, Chunker, RecursiveChunker, SemanticChunker
 
 
 DATA_DIR = "data"
-PERSIST_DIR = "./chroma_db"
+
+
+def build_chunker(strategy: str, embedder) -> Chunker:
+    if strategy == RecursiveChunker.name:
+        return RecursiveChunker(chunk_size=500, chunk_overlap=50)
+    if strategy == SemanticChunker.name:
+        return SemanticChunker(embedder, breakpoint_threshold_type="percentile")
+    raise ValueError(f"unknown strategy: {strategy}")
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Chunk + embed corpus into Chroma.")
+    parser.add_argument(
+        "--strategy",
+        choices=list(CHUNKERS),
+        default=RecursiveChunker.name,
+        help="Chunking strategy to use (default: recursive).",
+    )
+    args = parser.parse_args()
+
     loader = DirectoryLoader(
         DATA_DIR,
         glob="**/*.md",
@@ -20,22 +38,22 @@ def main():
     docs = loader.load()
     print(f"Loaded {len(docs)} documents from {DATA_DIR}/")
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.split_documents(docs)
-    print(f"Split into {len(chunks)} chunks.")
-
     embedder = OllamaEmbeddings(
         model="nomic-embed-text",
         base_url=os.environ["OLLAMA_HOST"],
     )
 
+    chunker = build_chunker(args.strategy, embedder)
+    chunks = chunker.split(docs)
+    print(f"[{chunker.name}] Split into {len(chunks)} chunks.")
+
     Chroma.from_documents(
         documents=chunks,
         embedding=embedder,
-        persist_directory=PERSIST_DIR,
+        persist_directory=chunker.persist_dir,
     )
 
-    print(f"Indexed {len(chunks)} chunks into Chroma.")
+    print(f"[{chunker.name}] Indexed {len(chunks)} chunks into {chunker.persist_dir}.")
 
 
 if __name__ == "__main__":

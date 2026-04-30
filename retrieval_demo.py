@@ -1,10 +1,11 @@
+import argparse
 import os
 
 from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings
 
+from chunking import CHUNKERS, RecursiveChunker
 
-PERSIST_DIR = "./chroma_db"
 
 QUERIES = [
     "What's the warranty on the R-200?",
@@ -13,14 +14,26 @@ QUERIES = [
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--store",
+        choices=list(CHUNKERS),
+        default=RecursiveChunker.name,
+        help="Which Chroma store to query (default: recursive).",
+    )
+    args = parser.parse_args()
+
+    persist_dir = CHUNKERS[args.store].persist_dir
     embedder = OllamaEmbeddings(
         model="nomic-embed-text",
         base_url=os.environ["OLLAMA_HOST"],
     )
     vectorstore = Chroma(
-        persist_directory=PERSIST_DIR,
+        persist_directory=persist_dir,
         embedding_function=embedder,
     )
+
+    print(f"=== Store: {args.store} ({persist_dir}) ===")
 
     for query in QUERIES:
         print(f"\n=== Query: {query!r} ===")
