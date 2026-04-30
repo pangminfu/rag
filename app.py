@@ -3,7 +3,7 @@ import os
 import uuid
 
 import streamlit as st
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from agent import DEFAULT_HYBRID, DEFAULT_RERANK, TOP_K, build_agent, build_retriever, retrieve
 from chunking import CHUNKERS, RecursiveChunker
@@ -68,6 +68,45 @@ for turn in st.session_state.history:
                     st.markdown(f"**[{i}] {src['source']}**")
                     st.text(src["text"])
 
+def stream_assistant_text(question: str, config: dict):
+    """Yield AI content tokens as they stream from the agent.
+
+    During tool-call phases the chunks carry tool_call_chunks but no content,
+    so they're naturally skipped — st.write_stream just sees a pause.
+    """
+    for chunk, _ in agent.stream(
+        {"messages": [{"role": "user", "content": question}]},
+        stream_mode="messages",
+        config=config,
+    ):
+        if isinstance(chunk, AIMessageChunk) and chunk.content:
+            yield chunk.content
+
+
+def collect_turn_tool_queries(config: dict) -> list[str]:
+    """Read this turn's search_knowledge_base queries from checkpointed state.
+
+    Walking back to the last HumanMessage, then forward, is more robust than
+    accumulating partial tool_call_chunks during the stream.
+    """
+    state = agent.get_state(config)
+    messages = state.values.get("messages", [])
+    last_human = -1
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            last_human = i
+            break
+    queries = []
+    for msg in messages[last_human + 1 :]:
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            for tc in msg.tool_calls:
+                if tc["name"] == "search_knowledge_base":
+                    q = tc["args"].get("query", "")
+                    if q:
+                        queries.append(q)
+    return queries
+
+
 question = st.chat_input("Ask about Acme Robotics...")
 if question:
     st.session_state.history.append({"role": "user", "content": question})
@@ -75,18 +114,9 @@ if question:
         st.markdown(question)
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            result = agent.invoke(
-                {"messages": [{"role": "user", "content": question}]},
-                config=config,
-            )
+        answer = st.write_stream(stream_assistant_text(question, config))
 
-        tool_queries = []
-        for msg in result["messages"]:
-            if isinstance(msg, AIMessage) and msg.tool_calls:
-                for tc in msg.tool_calls:
-                    if tc["name"] == "search_knowledge_base":
-                        tool_queries.append(tc["args"].get("query", ""))
+        tool_queries = collect_turn_tool_queries(config)
 
         sources = []
         for q in tool_queries:
@@ -97,9 +127,6 @@ if question:
                         "text": chunk.page_content,
                     }
                 )
-
-        answer = result["messages"][-1].content
-        st.markdown(answer)
 
         if sources:
             with st.expander(f"Sources ({len(sources)})"):
