@@ -12,6 +12,7 @@ dependencies = [
     "langchain-ollama>=1.1.0",
     "langgraph-checkpoint-sqlite>=3.0.3",
     "rank-bm25>=0.2.2",
+    "sentence-transformers>=5.4.1",
     "streamlit>=1.57.0",
     "transformers>=5.7.0",
 ]

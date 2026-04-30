@@ -5,7 +5,7 @@ import uuid
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent import DEFAULT_HYBRID, TOP_K, build_agent, build_retriever
+from agent import DEFAULT_HYBRID, DEFAULT_RERANK, TOP_K, build_agent, build_retriever, retrieve
 from chunking import CHUNKERS, RecursiveChunker
 
 
@@ -21,6 +21,11 @@ def parse_args():
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_HYBRID,
     )
+    parser.add_argument(
+        "--rerank",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_RERANK,
+    )
     return parser.parse_args()
 
 
@@ -30,13 +35,14 @@ st.set_page_config(page_title="Acme Robotics Assistant", page_icon=None)
 st.title("Acme Robotics Assistant")
 st.caption(
     f"Local RAG agent. Ollama: {os.environ.get('OLLAMA_HOST', 'unset')} • "
-    f"Store: {args.store} • Retrieval: {'hybrid' if args.hybrid else 'vector'}"
+    f"Store: {args.store} • Retrieval: {'hybrid' if args.hybrid else 'vector'} • "
+    f"Rerank: {'on' if args.rerank else 'off'}"
 )
 
 
 @st.cache_resource
-def get_agent(store: str, hybrid: bool):
-    return build_agent(store=store, hybrid=hybrid)
+def get_agent(store: str, hybrid: bool, rerank: bool):
+    return build_agent(store=store, hybrid=hybrid, rerank=rerank)
 
 
 @st.cache_resource
@@ -49,7 +55,7 @@ if "history" not in st.session_state:
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 
-agent = get_agent(args.store, args.hybrid)
+agent = get_agent(args.store, args.hybrid, args.rerank)
 retriever = get_retriever(args.store, args.hybrid)
 config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
@@ -84,7 +90,7 @@ if question:
 
         sources = []
         for q in tool_queries:
-            for chunk in retriever.invoke(q)[:TOP_K]:
+            for chunk in retrieve(q, retriever, rerank=args.rerank, k=TOP_K):
                 sources.append(
                     {
                         "source": chunk.metadata.get("source", "?"),

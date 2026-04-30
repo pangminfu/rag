@@ -12,6 +12,13 @@ wheels/
 
 # Persistent vector store
 chroma_db/
+chroma_db_semantic/
+
+# LangGraph checkpointer
+state.db
+state.db-journal
+state.db-wal
+state.db-shm
 
 # raw data
 data/

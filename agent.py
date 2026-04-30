@@ -1,6 +1,8 @@
 import argparse
 import os
 import sqlite3
+import sys
+import time
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentState, before_model
@@ -16,6 +18,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from chunking import CHUNKERS, RecursiveChunker
+from rerank import rerank as _rerank
 
 
 STATE_DB = "state.db"
@@ -25,6 +28,7 @@ FETCH_K = 20
 TRIM_MAX_TOKENS = 2000
 DEFAULT_STORE = RecursiveChunker.name
 DEFAULT_HYBRID = True
+DEFAULT_RERANK = True
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant for Acme Robotics employees. "
@@ -70,14 +74,46 @@ def build_retriever(
     return EnsembleRetriever(retrievers=[bm25, vector], weights=[0.5, 0.5])
 
 
-def build_agent(store: str = DEFAULT_STORE, hybrid: bool = DEFAULT_HYBRID):
+def retrieve(
+    query: str,
+    retriever: BaseRetriever,
+    *,
+    rerank: bool = DEFAULT_RERANK,
+    k: int = TOP_K,
+) -> list[Document]:
+    """Fetch FETCH_K candidates, optionally cross-encoder rerank to k.
+
+    The bi-encoder vector/BM25 retrievers cast a wide net (FETCH_K). When rerank
+    is on, a cross-encoder scores (query, chunk) pairs jointly to pick the
+    final k — far higher fidelity than the bi-encoder ranking alone.
+    """
+    t0 = time.perf_counter()
+    candidates = retriever.invoke(query)
+    t1 = time.perf_counter()
+    if not rerank:
+        return candidates[:k]
+    chunks = _rerank(query, candidates, k=k)
+    t2 = time.perf_counter()
+    print(
+        f"  [retrieve {(t1 - t0) * 1000:.0f}ms, "
+        f"rerank {len(candidates)}→{len(chunks)} {(t2 - t1) * 1000:.0f}ms]",
+        file=sys.stderr,
+    )
+    return chunks
+
+
+def build_agent(
+    store: str = DEFAULT_STORE,
+    hybrid: bool = DEFAULT_HYBRID,
+    rerank: bool = DEFAULT_RERANK,
+):
     llm = ChatOllama(model=LLM_MODEL, base_url=os.environ["OLLAMA_HOST"])
     retriever = build_retriever(store, hybrid)
 
     @tool
     def search_knowledge_base(query: str) -> str:
         """Searches Acme Robotics internal documents for HR policy, product specs, FAQs, and runbooks."""
-        chunks = retriever.invoke(query)[:TOP_K]
+        chunks = retrieve(query, retriever, rerank=rerank, k=TOP_K)
         if not chunks:
             return "No results found."
         return "\n\n---\n\n".join(
@@ -156,10 +192,16 @@ def main():
         default=DEFAULT_HYBRID,
         help="Combine BM25 with vector retrieval via RRF (default: on; --no-hybrid to disable).",
     )
+    parser.add_argument(
+        "--rerank",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_RERANK,
+        help="Cross-encoder rerank top-FETCH_K down to TOP_K (default: on; --no-rerank to disable).",
+    )
     args = parser.parse_args()
 
-    print(f"(store: {args.store}, hybrid: {args.hybrid})")
-    agent = build_agent(store=args.store, hybrid=args.hybrid)
+    print(f"(store: {args.store}, hybrid: {args.hybrid}, rerank: {args.rerank})")
+    agent = build_agent(store=args.store, hybrid=args.hybrid, rerank=args.rerank)
     thread_id = f"cli-{uuid.uuid4()}"
     run(agent, "What is 2 + 2?", thread_id=thread_id)
     run(agent, "What's the warranty on the R-200?", thread_id=thread_id)
