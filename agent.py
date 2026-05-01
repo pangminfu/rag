@@ -1,5 +1,4 @@
 import argparse
-import os
 import sqlite3
 import sys
 import time
@@ -13,38 +12,32 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, RemoveMessage, ToolMessage, trim_messages
 from langchain_core.retrievers import BaseRetriever
-from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from chunking import CHUNKERS, RecursiveChunker
+from model_provider import ModelProvider
 from rerank import rerank as _rerank
 
 
 STATE_DB = "state.db"
-LLM_MODEL = "gemma4:26b"
 TOP_K = 4
 FETCH_K = 20
 TRIM_MAX_TOKENS = 2000
 DEFAULT_STORE = RecursiveChunker.name
 DEFAULT_HYBRID = True
 DEFAULT_RERANK = True
+DEFAULT_SYSTEM_PROMPT_PATH = "prompts/system.md"
 
-SYSTEM_PROMPT = (
-    "You are a helpful assistant for Acme Robotics employees. "
-    "Use the search_knowledge_base tool when the question is about "
-    "Acme Robotics — its HR policies, products, FAQs, or internal runbooks. "
-    "For general knowledge or arithmetic, answer directly without the tool. "
-    "If the tool returns nothing relevant, say you don't know."
-)
+
+def load_system_prompt(path: str = DEFAULT_SYSTEM_PROMPT_PATH) -> str:
+    with open(path) as f:
+        return f.read().strip()
 
 
 def build_vectorstore(store: str = DEFAULT_STORE) -> Chroma:
     persist_dir = CHUNKERS[store].persist_dir
-    embedder = OllamaEmbeddings(
-        model="nomic-embed-text",
-        base_url=os.environ["OLLAMA_HOST"],
-    )
+    embedder = ModelProvider().embeddings()
     return Chroma(persist_directory=persist_dir, embedding_function=embedder)
 
 
@@ -106,9 +99,12 @@ def build_agent(
     store: str = DEFAULT_STORE,
     hybrid: bool = DEFAULT_HYBRID,
     rerank: bool = DEFAULT_RERANK,
+    system_prompt: str | None = None,
 ):
-    llm = ChatOllama(model=LLM_MODEL, base_url=os.environ["OLLAMA_HOST"])
+    llm = ModelProvider().chat()
     retriever = build_retriever(store, hybrid)
+    if system_prompt is None:
+        system_prompt = load_system_prompt()
 
     @tool
     def search_knowledge_base(query: str) -> str:
@@ -145,7 +141,7 @@ def build_agent(
     return create_agent(
         model=llm,
         tools=[search_knowledge_base],
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=system_prompt,
         middleware=[trim_history],
         checkpointer=saver,
     )
@@ -198,10 +194,21 @@ def main():
         default=DEFAULT_RERANK,
         help="Cross-encoder rerank top-FETCH_K down to TOP_K (default: on; --no-rerank to disable).",
     )
+    parser.add_argument(
+        "--system-prompt-file",
+        default=DEFAULT_SYSTEM_PROMPT_PATH,
+        help=f"Path to a system prompt file (default: {DEFAULT_SYSTEM_PROMPT_PATH}).",
+    )
     args = parser.parse_args()
 
     print(f"(store: {args.store}, hybrid: {args.hybrid}, rerank: {args.rerank})")
-    agent = build_agent(store=args.store, hybrid=args.hybrid, rerank=args.rerank)
+    system_prompt = load_system_prompt(args.system_prompt_file)
+    agent = build_agent(
+        store=args.store,
+        hybrid=args.hybrid,
+        rerank=args.rerank,
+        system_prompt=system_prompt,
+    )
     thread_id = f"cli-{uuid.uuid4()}"
     run(agent, "What is 2 + 2?", thread_id=thread_id)
     run(agent, "What's the warranty on the R-200?", thread_id=thread_id)

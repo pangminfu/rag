@@ -1,11 +1,10 @@
 import argparse
-import os
 
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_community.vectorstores import Chroma
-from langchain_ollama import OllamaEmbeddings
 
 from chunking import CHUNKERS, Chunker, RecursiveChunker, SemanticChunker
+from model_provider import ModelProvider
 
 
 DATA_DIR = "data"
@@ -38,10 +37,7 @@ def main():
     docs = loader.load()
     print(f"Loaded {len(docs)} documents from {DATA_DIR}/")
 
-    embedder = OllamaEmbeddings(
-        model="nomic-embed-text",
-        base_url=os.environ["OLLAMA_HOST"],
-    )
+    embedder = ModelProvider().embeddings()
 
     chunker = build_chunker(args.strategy, embedder)
     chunks = chunker.split(docs)

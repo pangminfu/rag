@@ -1,10 +1,9 @@
 import argparse
-import os
 
 from langchain_community.vectorstores import Chroma
-from langchain_ollama import OllamaEmbeddings
 
 from chunking import CHUNKERS, RecursiveChunker
+from model_provider import ModelProvider
 
 
 QUERIES = [
@@ -24,10 +23,7 @@ def main():
     args = parser.parse_args()
 
     persist_dir = CHUNKERS[args.store].persist_dir
-    embedder = OllamaEmbeddings(
-        model="nomic-embed-text",
-        base_url=os.environ["OLLAMA_HOST"],
-    )
+    embedder = ModelProvider().embeddings()
     vectorstore = Chroma(
         persist_directory=persist_dir,
         embedding_function=embedder,

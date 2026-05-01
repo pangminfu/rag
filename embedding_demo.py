@@ -1,7 +1,6 @@
-import os
-
 import numpy as np
-from langchain_ollama import OllamaEmbeddings
+
+from model_provider import ModelProvider
 
 
 SENTENCES = [
@@ -17,8 +16,7 @@ def cosine(a, b):
 
 
 def main():
-    base_url = os.environ["OLLAMA_HOST"]
-    embedder = OllamaEmbeddings(model="nomic-embed-text", base_url=base_url)
+    embedder = ModelProvider().embeddings()
     vectors = embedder.embed_documents(SENTENCES)
 
     print(f"Embedding dimension: {len(vectors[0])}\n")

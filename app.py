@@ -1,12 +1,21 @@
 import argparse
-import os
 import uuid
 
 import streamlit as st
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
-from agent import DEFAULT_HYBRID, DEFAULT_RERANK, TOP_K, build_agent, build_retriever, retrieve
+from agent import (
+    DEFAULT_HYBRID,
+    DEFAULT_RERANK,
+    DEFAULT_SYSTEM_PROMPT_PATH,
+    TOP_K,
+    build_agent,
+    build_retriever,
+    load_system_prompt,
+    retrieve,
+)
 from chunking import CHUNKERS, RecursiveChunker
+from model_provider import ModelProvider
 
 
 def parse_args():
@@ -26,23 +35,31 @@ def parse_args():
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_RERANK,
     )
+    parser.add_argument(
+        "--system-prompt-file",
+        default=DEFAULT_SYSTEM_PROMPT_PATH,
+    )
     return parser.parse_args()
 
 
 args = parse_args()
+provider = ModelProvider()
 
 st.set_page_config(page_title="Acme Robotics Assistant", page_icon=None)
 st.title("Acme Robotics Assistant")
 st.caption(
-    f"Local RAG agent. Ollama: {os.environ.get('OLLAMA_HOST', 'unset')} • "
+    f"RAG agent. LLM: {provider.llm_provider}/{provider.llm_model} • "
+    f"Embeddings: {provider.embedding_provider}/{provider.embedding_model} • "
     f"Store: {args.store} • Retrieval: {'hybrid' if args.hybrid else 'vector'} • "
     f"Rerank: {'on' if args.rerank else 'off'}"
 )
 
 
 @st.cache_resource
-def get_agent(store: str, hybrid: bool, rerank: bool):
-    return build_agent(store=store, hybrid=hybrid, rerank=rerank)
+def get_agent(store: str, hybrid: bool, rerank: bool, system_prompt: str):
+    return build_agent(
+        store=store, hybrid=hybrid, rerank=rerank, system_prompt=system_prompt
+    )
 
 
 @st.cache_resource
@@ -55,7 +72,8 @@ if "history" not in st.session_state:
 if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 
-agent = get_agent(args.store, args.hybrid, args.rerank)
+system_prompt = load_system_prompt(args.system_prompt_file)
+agent = get_agent(args.store, args.hybrid, args.rerank, system_prompt)
 retriever = get_retriever(args.store, args.hybrid)
 config = {"configurable": {"thread_id": st.session_state.thread_id}}
 
