@@ -1,10 +1,10 @@
 import argparse
 
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
-from langchain_community.vectorstores import Chroma
 
 from chunking import CHUNKERS, Chunker, RecursiveChunker, SemanticChunker
 from model_provider import ModelProvider
+from vector_store_provider import VectorStoreProvider
 
 
 DATA_DIR = "data"
@@ -19,7 +19,7 @@ def build_chunker(strategy: str, embedder) -> Chunker:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Chunk + embed corpus into Chroma.")
+    parser = argparse.ArgumentParser(description="Chunk + embed corpus into the configured vector store.")
     parser.add_argument(
         "--strategy",
         choices=list(CHUNKERS),
@@ -43,13 +43,9 @@ def main():
     chunks = chunker.split(docs)
     print(f"[{chunker.name}] Split into {len(chunks)} chunks.")
 
-    Chroma.from_documents(
-        documents=chunks,
-        embedding=embedder,
-        persist_directory=chunker.persist_dir,
-    )
+    VectorStoreProvider().from_documents(chunks, embedder, chunker.name)
 
-    print(f"[{chunker.name}] Indexed {len(chunks)} chunks into {chunker.persist_dir}.")
+    print(f"[{chunker.name}] Indexed {len(chunks)} chunks into collection {chunker.name!r}.")
 
 
 if __name__ == "__main__":

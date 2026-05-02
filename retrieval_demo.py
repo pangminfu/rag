@@ -1,9 +1,8 @@
 import argparse
 
-from langchain_community.vectorstores import Chroma
-
 from chunking import CHUNKERS, RecursiveChunker
 from model_provider import ModelProvider
+from vector_store_provider import VectorStoreProvider
 
 
 QUERIES = [
@@ -18,18 +17,15 @@ def main():
         "--store",
         choices=list(CHUNKERS),
         default=RecursiveChunker.name,
-        help="Which Chroma store to query (default: recursive).",
+        help="Which collection to query (default: recursive).",
     )
     args = parser.parse_args()
 
-    persist_dir = CHUNKERS[args.store].persist_dir
+    collection = CHUNKERS[args.store].name
     embedder = ModelProvider().embeddings()
-    vectorstore = Chroma(
-        persist_directory=persist_dir,
-        embedding_function=embedder,
-    )
+    vectorstore = VectorStoreProvider().load(embedder, collection)
 
-    print(f"=== Store: {args.store} ({persist_dir}) ===")
+    print(f"=== Store: {args.store} (collection: {collection}) ===")
 
     for query in QUERIES:
         print(f"\n=== Query: {query!r} ===")

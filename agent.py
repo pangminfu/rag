@@ -8,16 +8,17 @@ from langchain.agents.middleware import AgentState, before_model
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain.tools import tool
 from langchain_community.retrievers import BM25Retriever
-from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, RemoveMessage, ToolMessage, trim_messages
 from langchain_core.retrievers import BaseRetriever
+from langchain_core.vectorstores import VectorStore
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from chunking import CHUNKERS, RecursiveChunker
 from model_provider import ModelProvider
 from rerank import rerank as _rerank
+from vector_store_provider import VectorStoreProvider
 
 
 STATE_DB = "state.db"
@@ -35,10 +36,10 @@ def load_system_prompt(path: str = DEFAULT_SYSTEM_PROMPT_PATH) -> str:
         return f.read().strip()
 
 
-def build_vectorstore(store: str = DEFAULT_STORE) -> Chroma:
-    persist_dir = CHUNKERS[store].persist_dir
+def build_vectorstore(store: str = DEFAULT_STORE) -> VectorStore:
+    collection = CHUNKERS[store].name
     embedder = ModelProvider().embeddings()
-    return Chroma(persist_directory=persist_dir, embedding_function=embedder)
+    return VectorStoreProvider().load(embedder, collection)
 
 
 def build_retriever(
@@ -47,7 +48,7 @@ def build_retriever(
 ) -> BaseRetriever:
     """Build the retriever the agent searches with.
 
-    BM25 is built over the same chunks that live in the chosen Chroma store, so
+    BM25 is built over the same chunks that live in the chosen vector store, so
     the lexical arm stays consistent with whatever chunking strategy ingest used.
     """
     vectorstore = build_vectorstore(store)
@@ -56,11 +57,7 @@ def build_retriever(
     if not hybrid:
         return vector
 
-    raw = vectorstore.get(include=["documents", "metadatas"])
-    docs = [
-        Document(page_content=text, metadata=meta or {})
-        for text, meta in zip(raw["documents"], raw["metadatas"])
-    ]
+    docs = VectorStoreProvider().dump_documents(vectorstore)
     bm25 = BM25Retriever.from_documents(docs)
     bm25.k = FETCH_K
 
@@ -180,7 +177,7 @@ def main():
         "--store",
         choices=list(CHUNKERS),
         default=DEFAULT_STORE,
-        help="Which Chroma store to query (default: recursive).",
+        help="Which collection to query (default: recursive).",
     )
     parser.add_argument(
         "--hybrid",

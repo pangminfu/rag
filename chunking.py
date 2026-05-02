@@ -7,11 +7,11 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 class Chunker(ABC):
-    """Pluggable chunking strategy. Each strategy persists to its own Chroma dir
-    so different strategies can be compared side-by-side without re-indexing."""
+    """Pluggable chunking strategy. Each strategy persists to its own collection
+    so different strategies can be compared side-by-side without re-indexing.
+    The chunker's `name` doubles as the vector-store collection name."""
 
     name: str
-    persist_dir: str
 
     @abstractmethod
     def split(self, docs: list[Document]) -> list[Document]: ...
@@ -19,7 +19,6 @@ class Chunker(ABC):
 
 class RecursiveChunker(Chunker):
     name = "recursive"
-    persist_dir = "./chroma_db"
 
     def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50):
         self.chunk_size = chunk_size
@@ -35,7 +34,6 @@ class RecursiveChunker(Chunker):
 
 class SemanticChunker(Chunker):
     name = "semantic"
-    persist_dir = "./chroma_db_semantic"
 
     def __init__(
         self,

@@ -1,13 +1,13 @@
-import sys
-
-from langchain_community.vectorstores import Chroma
+import argparse
 
 from agent import load_system_prompt
+from chunking import CHUNKERS, RecursiveChunker
 from model_provider import ModelProvider
+from vector_store_provider import VectorStoreProvider
 
 
-PERSIST_DIR = "./chroma_db"
 TOP_K = 4
+DEFAULT_STORE = RecursiveChunker.name
 
 PROMPT_TEMPLATE = """{system_prompt}
 Answer the question using ONLY the context below.
@@ -19,15 +19,16 @@ Context:
 Question: {question}"""
 
 
-def _build_components():
+def _build_components(store: str):
     provider = ModelProvider()
-    vectorstore = Chroma(persist_directory=PERSIST_DIR, embedding_function=provider.embeddings())
+    collection = CHUNKERS[store].name
+    vectorstore = VectorStoreProvider().load(provider.embeddings(), collection)
     llm = provider.chat()
     return vectorstore, llm
 
 
-def answer(question: str) -> str:
-    vectorstore, llm = _build_components()
+def answer(question: str, store: str = DEFAULT_STORE) -> str:
+    vectorstore, llm = _build_components(store)
 
     chunks = vectorstore.similarity_search(question, k=TOP_K)
     context = "\n\n---\n\n".join(
@@ -44,11 +45,18 @@ def answer(question: str) -> str:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print('Usage: uv run rag.py "<your question>"', file=sys.stderr)
-        sys.exit(1)
-    question = " ".join(sys.argv[1:])
-    print(answer(question))
+    parser = argparse.ArgumentParser(description="Naive always-retrieve RAG.")
+    parser.add_argument(
+        "--store",
+        choices=list(CHUNKERS),
+        default=DEFAULT_STORE,
+        help=f"Which collection to query (default: {DEFAULT_STORE}).",
+    )
+    parser.add_argument("question", nargs="+", help="The question to answer.")
+    args = parser.parse_args()
+
+    question = " ".join(args.question)
+    print(answer(question, store=args.store))
 
 
 if __name__ == "__main__":
