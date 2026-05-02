@@ -43,7 +43,10 @@ def main():
     chunks = chunker.split(docs)
     print(f"[{chunker.name}] Split into {len(chunks)} chunks.")
 
-    VectorStoreProvider().from_documents(chunks, embedder, chunker.name)
+    store = VectorStoreProvider()
+    store.delete_collection(chunker.name)
+    print(f"[{chunker.name}] Cleared existing collection {chunker.name!r}.")
+    store.from_documents(chunks, embedder, chunker.name)
 
     print(f"[{chunker.name}] Indexed {len(chunks)} chunks into collection {chunker.name!r}.")
 

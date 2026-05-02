@@ -39,6 +39,9 @@ class _VectorStore:
     def dump_documents(self, store: VectorStore) -> list[Document]:
         raise NotImplementedError
 
+    def delete_collection(self, collection: str) -> None:
+        raise NotImplementedError
+
 
 class _ChromaVectorStore(_VectorStore):
     ROOT = Path("./vectorstore/chroma")
@@ -66,6 +69,10 @@ class _ChromaVectorStore(_VectorStore):
             Document(page_content=text, metadata=meta or {})
             for text, meta in zip(raw["documents"], raw["metadatas"])
         ]
+
+    def delete_collection(self, collection):
+        import shutil
+        shutil.rmtree(self.ROOT / collection, ignore_errors=True)
 
 
 class _QdrantVectorStore(_VectorStore):
@@ -109,6 +116,15 @@ class _QdrantVectorStore(_VectorStore):
                 break
         return docs
 
+    def delete_collection(self, collection):
+        from qdrant_client import QdrantClient
+        client = QdrantClient(
+            url=_env("QDRANT_URL"),
+            api_key=os.environ.get("QDRANT_API_KEY"),
+        )
+        if client.collection_exists(collection):
+            client.delete_collection(collection_name=collection)
+
 
 _VECTOR_STORES: dict[str, type[_VectorStore]] = {
     "chroma": _ChromaVectorStore,
@@ -149,3 +165,7 @@ class VectorStoreProvider:
         time instead of relying on this.
         """
         return self._vector_store.dump_documents(store)
+
+    def delete_collection(self, collection: str) -> None:
+        """Remove the collection if it exists. Idempotent."""
+        self._vector_store.delete_collection(collection)
