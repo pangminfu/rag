@@ -5,6 +5,9 @@ from model_provider import ModelProvider
 from vector_store_provider import VectorStoreProvider
 
 
+# Sample queries tied to the Acme demo corpus (samples/acme/) — the first
+# should retrieve product-warranty chunks, the second is out-of-corpus and
+# should rank low. Swap these for queries from your own corpus.
 QUERIES = [
     "What's the warranty on the R-200?",
     "How do I bake bread?",

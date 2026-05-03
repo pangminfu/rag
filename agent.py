@@ -1,4 +1,5 @@
 import argparse
+import os
 import sqlite3
 import sys
 import time
@@ -29,6 +30,9 @@ DEFAULT_STORE = RecursiveChunker.name
 DEFAULT_HYBRID = True
 DEFAULT_RERANK = True
 DEFAULT_SYSTEM_PROMPT_PATH = "prompts/system.md"
+DEFAULT_KB_DESCRIPTION = (
+    "Searches the knowledge base for information relevant to the user's question."
+)
 
 
 def load_system_prompt(path: str = DEFAULT_SYSTEM_PROMPT_PATH) -> str:
@@ -103,9 +107,11 @@ def build_agent(
     if system_prompt is None:
         system_prompt = load_system_prompt()
 
+    kb_description = os.environ.get("KNOWLEDGE_BASE_DESCRIPTION", DEFAULT_KB_DESCRIPTION)
+
     @tool
     def search_knowledge_base(query: str) -> str:
-        """Searches Acme Robotics internal documents for HR policy, product specs, FAQs, and runbooks."""
+        """placeholder — overwritten below with kb_description."""
         chunks = retrieve(query, retriever, rerank=rerank, k=TOP_K)
         if not chunks:
             return "No results found."
@@ -113,6 +119,8 @@ def build_agent(
             f"[source: {c.metadata.get('source', '?')}]\n{c.page_content}"
             for c in chunks
         )
+
+    search_knowledge_base.description = kb_description
 
     @before_model
     def trim_history(state: AgentState, runtime) -> dict | None:
@@ -208,7 +216,7 @@ def main():
     )
     thread_id = f"cli-{uuid.uuid4()}"
     run(agent, "What is 2 + 2?", thread_id=thread_id)
-    run(agent, "What's the warranty on the R-200?", thread_id=thread_id)
+    run(agent, "Summarize what your knowledge base is about.", thread_id=thread_id)
 
 
 if __name__ == "__main__":

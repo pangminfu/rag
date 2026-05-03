@@ -13,6 +13,7 @@ wheels/
 # Persistent vector store
 chroma_db/
 chroma_db_semantic/
+vectorstore/
 
 # LangGraph checkpointer
 state.db
@@ -20,5 +21,8 @@ state.db-journal
 state.db-wal
 state.db-shm
 
-# raw data
-data/
+# User-supplied content (drop your own docs/eval here)
+data/*
+!data/.gitkeep
+eval/eval_set.jsonl
+eval/trace_*.jsonl

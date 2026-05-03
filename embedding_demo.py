@@ -3,6 +3,9 @@ import numpy as np
 from model_provider import ModelProvider
 
 
+# Sample sentences tied to the Acme demo corpus (samples/acme/) — the first two
+# should land semantically close, the third should be far. Swap these for
+# queries from your own corpus when running on different data.
 SENTENCES = [
     "How many days of annual leave do I get?",
     "What is the vacation policy?",

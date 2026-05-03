@@ -1,4 +1,5 @@
 import argparse
+import os
 import uuid
 
 import streamlit as st
@@ -44,9 +45,10 @@ def parse_args():
 
 args = parse_args()
 provider = ModelProvider()
+assistant_name = os.environ.get("ASSISTANT_NAME", "AI Assistant")
 
-st.set_page_config(page_title="Acme Robotics Assistant", page_icon=None)
-st.title("Acme Robotics Assistant")
+st.set_page_config(page_title=assistant_name, page_icon=None)
+st.title(assistant_name)
 st.caption(
     f"RAG agent. LLM: {provider.llm_provider}/{provider.llm_model} • "
     f"Embeddings: {provider.embedding_provider}/{provider.embedding_model} • "
@@ -125,7 +127,7 @@ def collect_turn_tool_queries(config: dict) -> list[str]:
     return queries
 
 
-question = st.chat_input("Ask about Acme Robotics...")
+question = st.chat_input(f"Ask {assistant_name}...")
 if question:
     st.session_state.history.append({"role": "user", "content": question})
     with st.chat_message("user"):
